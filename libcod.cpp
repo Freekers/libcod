@@ -202,6 +202,8 @@ void custom_SV_MasterHeartbeat(const char *game)
 	}
 }
 
+int codecallback_remotecommand = 0;
+
 int codecallback_playercommand = 0;
 int codecallback_userinfochanged = 0;
 int codecallback_fire_grenade = 0;
@@ -215,6 +217,8 @@ cHook *hook_gametype_scripts;
 int hook_codscript_gametype_scripts()
 {
 	hook_gametype_scripts->unhook();
+
+	codecallback_remotecommand = Scr_GetFunctionHandle("maps/mp/gametypes/_callbacksetup", "CodeCallback_RemoteCommand", 0);
 
 	codecallback_playercommand = Scr_GetFunctionHandle("maps/mp/gametypes/_callbacksetup", "CodeCallback_PlayerCommand", 0);
 	codecallback_userinfochanged = Scr_GetFunctionHandle("maps/mp/gametypes/_callbacksetup", "CodeCallback_UserInfoChanged", 0);
@@ -1060,7 +1064,8 @@ void hook_SVC_RemoteCommand(netadr_t from, msg_t *msg)
 		return;
 	}
 
-	if ( !strlen( rcon_password->string ) || strcmp(Cmd_Argv(1), rcon_password->string) != 0 )
+	bool badRconPassword = !strlen( rcon_password->string ) || strcmp(Cmd_Argv(1), rcon_password->string) != 0;
+	if (badRconPassword)
 	{
 		static leakyBucket_t bucket;
 
@@ -1072,17 +1077,29 @@ void hook_SVC_RemoteCommand(netadr_t from, msg_t *msg)
 		}
 	}
 
-#if COD_VERSION == COD2_1_0
-	int lasttime_offset = 0x0848B674;
-#elif COD_VERSION == COD2_1_2
-	int lasttime_offset = 0x0849EB74;
-#elif COD_VERSION == COD2_1_3
-	int lasttime_offset = 0x0849FBF4;
-#endif
+	if (!codecallback_remotecommand || badRconPassword || !Scr_IsSystemActive() || strcmp(Cmd_Argv(2), "map") == 0 || strcmp(Cmd_Argv(2), "devmap") == 0)
+	{
+		RemoteCommand(from, msg);
+	}
+	else
+	{
+		stackPushInt((int)msg);
 
-	*(int *)lasttime_offset = 0;
+		stackPushArray();
+		int args = Cmd_Argc();
+		for (int i = 2; i < args; i++)
+		{
+			char tmp[COD2_MAX_STRINGLENGTH];
+			SV_Cmd_ArgvBuffer(i, tmp, sizeof(tmp));
+			stackPushString(tmp);
+			stackPushArrayLast();
+		}
 
-	SVC_RemoteCommand(from, msg);
+		stackPushString(NET_AdrToString(from));
+	
+		short ret = Scr_ExecThread(codecallback_remotecommand, 3);
+		Scr_FreeThread(ret);
+	}
 }
 
 void hook_SV_GetChallenge(netadr_t from)
@@ -1252,6 +1269,32 @@ int hook_findMap(const char *qpath, void **buffer)
 		return FS_ReadFile(qpath, buffer);
 }
 
+bool hook_SV_MapExists(const char *mapname)
+{
+	bool map_exists = SV_MapExists(mapname);
+
+	if (map_exists)
+	{
+		return map_exists;
+	}
+	else 
+	{
+		char map_check[1024];
+		char library_path[512];
+
+		cvar_t *fs_homepath = Cvar_FindVar("fs_homepath");
+		cvar_t *fs_game = Cvar_FindVar("fs_game");
+		if (strlen(fs_library->string))
+			strncpy(library_path, fs_library->string, sizeof(library_path));
+		else
+			snprintf(library_path, sizeof(library_path), "%s/%s/Library", fs_homepath->string, fs_game->string);
+
+		snprintf(map_check, sizeof(map_check), "%s/%s.iwd", library_path, mapname);
+
+		return access(map_check, F_OK) != -1;
+	}
+}
+
 class cCallOfDuty2Pro
 {
 public:
@@ -1283,6 +1326,8 @@ public:
 		cracking_hook_call(0x0808C8C0, (int)hook_AuthorizeState);
 		cracking_hook_call(0x0808BFCA, (int)hook_isLanAddress);
 		cracking_hook_call(0x0808AD00, (int)hook_findMap);
+		cracking_hook_call(0x08114655, (int)hook_SV_MapExists); // GSC map function
+		cracking_hook_call(0x08114940, (int)hook_SV_MapExists); // GSC mapexists function
 		cracking_hook_call(0x0808F134, (int)hook_ClientUserinfoChanged);
 		cracking_hook_call(0x0807059F, (int)Scr_GetCustomFunction);
 		cracking_hook_call(0x080707C3, (int)Scr_GetCustomMethod);
@@ -1342,6 +1387,8 @@ public:
 		cracking_hook_call(0x0808DA52, (int)hook_AuthorizeState);
 		cracking_hook_call(0x0808D22E, (int)hook_isLanAddress);
 		cracking_hook_call(0x0808BCFC, (int)hook_findMap);
+		cracking_hook_call(0x08116981, (int)hook_SV_MapExists); // GSC map function
+		cracking_hook_call(0x08116C6C, (int)hook_SV_MapExists); // GSC mapexists function
 		cracking_hook_call(0x080909BE, (int)hook_ClientUserinfoChanged);
 		cracking_hook_call(0x08070B1B, (int)Scr_GetCustomFunction);
 		cracking_hook_call(0x08070D3F, (int)Scr_GetCustomMethod);
@@ -1401,6 +1448,8 @@ public:
 		cracking_hook_call(0x0808DB12, (int)hook_AuthorizeState);
 		cracking_hook_call(0x0808D2FA, (int)hook_isLanAddress);
 		cracking_hook_call(0x0808BDC8, (int)hook_findMap);
+		cracking_hook_call(0x08116ADD, (int)hook_SV_MapExists); // GSC map function
+		cracking_hook_call(0x08116DC8, (int)hook_SV_MapExists); // GSC mapexists function
 		cracking_hook_call(0x08090A52, (int)hook_ClientUserinfoChanged);
 		cracking_hook_call(0x08070BE7, (int)Scr_GetCustomFunction);
 		cracking_hook_call(0x08070E0B, (int)Scr_GetCustomMethod);

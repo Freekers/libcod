@@ -189,6 +189,7 @@ scr_function_t scriptFunctions[] =
 
 #if COMPILE_UTILS == 1
 	{"printf", gsc_utils_printf, 0},
+	{"printoutofband", gsc_utils_outofbandprint, 0},
 	{"getarraykeys", gsc_utils_getarraykeys, 0},
 	{"getascii", gsc_utils_getAscii, 0},
 	{"toupper", gsc_utils_toupper, 0},
@@ -225,6 +226,7 @@ scr_function_t scriptFunctions[] =
 	{"vectorscale", gsc_utils_vectorscale, 0},
 	{"remove_file", gsc_utils_remove_file, 0},
 	{"putchar", gsc_utils_putchar, 0},
+	{"remotecommand", gsc_utils_remotecommand, 0},
 #endif
 
 #if COMPILE_WEAPONS == 1
